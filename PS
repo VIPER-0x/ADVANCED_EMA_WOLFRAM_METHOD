@@ -1,0 +1,103 @@
+//@version=6  
+indicator('A ema', overlay=true)  
+
+// --- General Settings ---  
+var table ema_table = table.new(position=position.bottom_right, columns=3, rows=21, bgcolor=color.black, border_width=1)  
+
+// --- Noisy Data Definition ---  
+data = array.from(2.88799, 0.968478, 2.30033, 3.7018, 4.33981, 6.32161, 8.32878, 6.90898, 7.28473, 10.4311, 9.9825, 13.6659, 11.1709, 13.4487, 14.0898, 14.3486, 17.1913, 18.6817, 17.828, 21.8666)  
+data_size = array.size(data)  
+
+// --- Financial Data (Close Price) ---  
+financial_data = open
+
+// --- Functions ---  
+
+// EMA Calculation Function  
+f_ema(float alpha, data_arr) =>  
+    ema = array.new_float(data_size, 0.0)  
+    array.set(ema, 0, array.get(data_arr, 0))  
+    for i = 1 to data_size - 1  
+        ema_prev = array.get(ema, i - 1)  
+        current_value = array.get(data_arr, i)  
+        ema_current = alpha * current_value + (1 - alpha) * ema_prev  
+        array.set(ema, i, ema_current)  
+    ema  
+
+// EMA Calculation with Initial Value  
+f_ema_with_start(float alpha, data_arr, float start) =>  
+    ema = array.new_float(data_size, start)  
+    for i = 0 to data_size - 1  
+        ema_prev = array.get(ema, i)  
+        current_value = array.get(data_arr, i)  
+        ema_current = alpha * current_value + (1 - alpha) * ema_prev  
+        array.set(ema, i, ema_current)  
+    ema  
+
+// Check EMA Recurrence Relation  
+check_recurrence(float alpha, data_arr, ema_values) =>  
+    is_valid = true  
+    size = math.min(array.size(data_arr), array.size(ema_values)) - 1  
+    for i = 1 to size  
+        ema_prev = array.get(ema_values, i - 1)  
+        ema_current = array.get(ema_values, i)  
+        data_current = array.get(data_arr, i)  
+        expected_ema = ema_prev + alpha * (data_current - ema_prev)  
+        if math.abs(ema_current - expected_ema) > 0.00001  
+            is_valid := false  
+            break  
+    is_valid  
+
+// --- Calculations ---  
+
+// Initialize variables  
+var float alpha_noisy = 1.0 / 4.0  
+var float alpha_start = 1.0 / 5.0  
+var float start_value = 4.5  
+var float alpha_financial = 0.1  
+var label lbl = na
+// Calculate EMAs  
+smoothed_noisy = f_ema(alpha_noisy, data)  
+smoothed_with_start = f_ema_with_start(alpha_start, data, start_value)  
+
+// Financial Data EMA  
+period = int(2.0 / alpha_financial) - 1  
+ema_financial = ta.ema(financial_data, period)  
+
+// Check Recurrence Relation  
+is_recurrence_valid = check_recurrence(alpha_noisy, data, smoothed_noisy)  
+
+// --- Display Results in Table ---  
+
+if barstate.islast  
+    // Table Headers (Dark Blue Background)  
+    table.cell(ema_table, 0, 0, 'Day', bgcolor=color.rgb(0, 0, 102), text_color=color.white, text_size=size.small)  
+    table.cell(ema_table, 1, 0, 'Noisy Data EMA', bgcolor=color.rgb(0, 0, 102), text_color=color.white, text_size=size.small)  
+    table.cell(ema_table, 2, 0, 'EMA with Start', bgcolor=color.rgb(0, 0, 102), text_color=color.white, text_size=size.small)  
+
+    // Fill Table with Data (Gradient Background and Adaptive Text Color)  
+    for i = 0 to data_size - 1  
+        // Background Gradient: Black to White  
+        bg_gradient = int(85 * (i / data_size)) // Scales from 0 to 255  
+        bgcolor = color.rgb(bg_gradient, bg_gradient, bg_gradient)  
+
+        // Text Gradient: White to Black (Reverse of Background)  
+        text_gradient = 500 - bg_gradient // Reverse the gradient  
+        textcolor = color.rgb(text_gradient, text_gradient, text_gradient)  
+
+        // Fill Table Cells  
+        table.cell(ema_table, 0, i + 1, str.tostring(i + 1), bgcolor=bgcolor, text_color=textcolor, text_size=size.small)  
+        table.cell(ema_table, 1, i + 1, str.tostring(math.round(array.get(smoothed_noisy, i), 5)), bgcolor=bgcolor, text_color=textcolor, text_size=size.small)  
+        table.cell(ema_table, 2, i + 1, str.tostring(math.round(array.get(smoothed_with_start, i), 5)), bgcolor=bgcolor, text_color=textcolor, text_size=size.small)  
+
+// Plot Financial EMA  
+plot(ema_financial, color=color.green, linewidth=2, title='(α=0.1)')  
+
+// Display Recurrence Check Result  
+if barstate.islast
+    label.delete(lbl)  
+    lbl:=label.new(bar_index, high,   
+             text='Recurrence Relation: ' + (is_recurrence_valid ? '✓ Valid' : '✗ Invalid'),   
+             style=label.style_label_down,  
+             color=is_recurrence_valid ? color.rgb(76, 175, 79, 100) : color.red,  
+             textcolor=color.white)
